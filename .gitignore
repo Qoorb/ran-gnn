@@ -1,0 +1,5 @@
+.venv/
+datasets/
+__pycache__/
+ModelNet10.zip
+ModelNet10/
