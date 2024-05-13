@@ -9,3 +9,5 @@ data/
 
 *.zip
 *.pth
+taylor/
+modeldgcnn.py

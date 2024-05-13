@@ -2,26 +2,27 @@ from torch.utils.data import Dataset, DataLoader
 from pathlib import Path
 from clearml import Task, Dataset
 from torchvision import transforms
+import torch.nn.functional as F
 
-import plotly.graph_objects as go
+import argparse
 import numpy as np
 import random
 import os
 import torch
 from classes import read_off, report_clearml_3d
 from classes import PointSampler, Normalize, RandRotation_z, RandomNoise, PointCloudData, ToTensor
-from model import PointNet,pointnetloss
+from model import PointNet,pointnetloss,DGCNN,cal_loss
 
 
 parametrs = {
     "optimazer": "Adam",
-    "Learning_rate": 0.001,
-    "epochs": 3,
-    "train_batch_size": 32,
+    "Learning_rate": 0.01,
+    "epochs": 2,
+    "train_batch_size": 128,
     "valid_batch_size": 64,
 }
 
-task = Task.init(project_name = 'PointNetML',task_name="Pointnet for classification")
+task = Task.init(project_name = 'PointNetML',task_name="DGCNN for classification")
 
 data_path = Dataset.get(dataset_name = 'ModelNet10').get_local_copy()
 path = Path(data_path)
@@ -37,6 +38,8 @@ with open(path/"bed/train/bed_0001.off", 'r') as f:
 
 pointcloud = PointSampler(3000)((verts, faces))
 report_clearml_3d("Scatter_3d", pointcloud)
+print(pointcloud)
+print(pointcloud.shape)
 
 norm_pointcloud = Normalize()(pointcloud)
 report_clearml_3d("Normalize_Scatter_3d", norm_pointcloud)
@@ -68,21 +71,57 @@ valid_loader = DataLoader(dataset=valid_ds, batch_size=parametrs["valid_batch_si
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 task.upload_artifact(name ="Cuda_device",artifact_object = device)
+parser = argparse.ArgumentParser(description='Point Cloud Recognition')
+parser.add_argument('--exp_name', type=str, default='exp', metavar='N',
+                        help='Name of the experiment')
+parser.add_argument('--model', type=str, default='dgcnn', metavar='N',
+                        choices=['pointnet', 'dgcnn'],
+                        help='Model to use, [pointnet, dgcnn]')
+parser.add_argument('--dataset', type=str, default='modelnet40', metavar='N',
+                        choices=['modelnet40'])
+parser.add_argument('--batch_size', type=int, default=32, metavar='batch_size',
+                        help='Size of batch)')
+parser.add_argument('--test_batch_size', type=int, default=16, metavar='batch_size',
+                        help='Size of batch)')
+parser.add_argument('--epochs', type=int, default=250, metavar='N',
+                        help='number of episode to train ')
+parser.add_argument('--use_sgd', type=bool, default=True,
+                        help='Use SGD')
+parser.add_argument('--lr', type=float, default=0.001, metavar='LR',
+                        help='learning rate (default: 0.001, 0.1 if using sgd)')
+parser.add_argument('--momentum', type=float, default=0.9, metavar='M',
+                        help='SGD momentum (default: 0.9)')
+parser.add_argument('--no_cuda', type=bool, default=False,
+                        help='enables CUDA training')
+parser.add_argument('--seed', type=int, default=1, metavar='S',
+                        help='random seed (default: 1)')
+parser.add_argument('--eval', type=bool,  default=False,
+                        help='evaluate the model')
+parser.add_argument('--num_points', type=int, default=1024,
+                        help='num of points to use')
+parser.add_argument('--dropout', type=float, default=0.5,
+                        help='dropout rate')
+parser.add_argument('--emb_dims', type=int, default=1024, metavar='N',
+                        help='Dimension of embeddings')
+parser.add_argument('--k', type=int, default=20, metavar='N',
+                        help='Num of nearest neighbors to use')
 
-pointnet = PointNet()
+args = parser.parse_args()
+
+pointnet = DGCNN(args)
 pointnet.to(device);
 
 optimizer = torch.optim.Adam(pointnet.parameters(), lr=parametrs["Learning_rate"])
-def train(model, optimizer,train_loader, val_loader=None,  epochs=15, device = "cpu", save=True):
+def train(model, optimizer,train_loader, val_loader=None,  epochs=2, device = "cpu", save=True):
     for epoch in range(epochs):
         model.train()
         running_loss = 0.0
         for i, data in enumerate(train_loader, 0):
             inputs, labels = data['pointcloud'].to(device).float(), data['category'].to(device)
             optimizer.zero_grad()
-            outputs, m3x3, m64x64 = model(inputs.transpose(1,2))
+            outputs = model(inputs.transpose(1,2))
 
-            loss = pointnetloss(outputs, labels, m3x3, m64x64)
+            loss = F.cross_entropy(outputs, labels, reduction='mean')
             loss.backward()
             optimizer.step()
 

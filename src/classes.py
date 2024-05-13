@@ -9,6 +9,7 @@ import torch
 import os
 
 
+
 def read_off(file):
     if 'OFF' != file.readline().strip():
         raise('Not a valid OFF header')
@@ -34,8 +35,6 @@ def report_clearml_scatter(title,scatter2d):
     xaxis="title x",
     yaxis="title y",
     )   
-Logger.current_logger().report_scatter2d
-
 def default_transforms():
     return transforms.Compose([
                                 PointSampler(1024),
