@@ -12,6 +12,6 @@ data/
 *.pth
 taylor/
 modeldgcnn.py
-ran-gnn/checkpoints
+checkpoints
 info.md
 merged_output
