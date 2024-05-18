@@ -1,6 +1,7 @@
 __pycache__/
 __MACOSX/
 .venv/
+venv
 
 datasets/
 ModelNet10/
@@ -11,3 +12,6 @@ data/
 *.pth
 taylor/
 modeldgcnn.py
+ran-gnn/checkpoints
+info.md
+merged_output
