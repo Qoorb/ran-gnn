@@ -4,18 +4,27 @@ import os
 
 
 
+import os
+import random
+
 def get_all_csv_files(root_dir):
+    '''This function recursively takes your CSV files with points and returns
+    two lists: one for training (70%) and one for testing (30%)'''
 
-    '''This function recursiving takes your csv 
-    files with points and return their place list'''
-
+    # Собираем все CSV файлы
     csv_files = []
     for root, _, files in os.walk(root_dir):
         for file in files:
             if file.endswith('.csv'):
                 csv_files.append(os.path.join(root, file))
+
     print(f'Found {len(csv_files)} CSV files')
-    return csv_files
+    random.shuffle(csv_files)
+    train_size = int(0.7 * len(csv_files))
+    train_files = csv_files[:train_size]
+    test_files = csv_files[train_size:]
+
+    return train_files, test_files
 
 
 

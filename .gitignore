@@ -7,11 +7,9 @@ datasets/
 ModelNet10/
 tests/
 data/
-
 *.zip
 *.pth
 taylor/
 modeldgcnn.py
-checkpoints
 info.md
 merged_output
