@@ -23,8 +23,8 @@ class PointCloudDataset(Dataset):
         next_points = self.normalize(next_points)
 
         # Транспонирование для соответствия форме (num_dims, num_points)
-        points = points.T
-        next_points = next_points.T
+        #points = points.T
+        #next_points = next_points.T
 
         return torch.tensor(points), torch.tensor(next_points)
     
