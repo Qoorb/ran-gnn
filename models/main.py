@@ -14,12 +14,27 @@ task = Task.init(project_name='PointNetML', task_name="DGCNN Regression --Model2
 # Параметры
 parameters = {
     'root_dir': 'merged_output_taylor',
-    'batch_size': 10,
-    'epochs': 40,
-    'learning_rate': 0.001,
+    'batch_size': 2,
+    'epochs': 2,
+    'learning_rate': 0.01,
     'k': 2,
+    'emb_dims': 512,
+    'dropout': 0.2,
+    'num_points': 35746
 }
 task.connect(parameters)
+
+# Определим класс Args для хранения аргументов
+class Args:
+    def __init__(self, k, emb_dims, dropout):
+        self.k = k
+        self.emb_dims = emb_dims
+        self.dropout = dropout
+
+args = Args(parameters['k'], parameters['emb_dims'], parameters['dropout'])
+
+# Устройство для вычислений
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Получение списка CSV файлов
 csv_files_train, csv_files_test = get_all_csv_files(parameters['root_dir'])
@@ -31,7 +46,8 @@ train_loader = DataLoader(dataset_train, parameters['batch_size'], shuffle=True)
 test_loader = DataLoader(dataset_test, parameters['batch_size'], shuffle=False)
 
 # Инициализируем модель, оптимизатор и функцию потерь
-model = PointNet(3,256,3)
+#model = PointNet(3,256,3)
+model = DGCNN(args, parameters['num_points']).to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=parameters['learning_rate'])
 criterion = calculate_smape_loss
 
@@ -43,9 +59,10 @@ def train(model, loader, optimizer, criterion, epochs):
         total_smape = 0
         total_mape = 0  # Добавляем переменную для суммы MAPE
         for points, next_points in loader:
+            points, next_points = points.to(device), next_points.to(device)
             optimizer.zero_grad()
-            points = points.view(-1, 3)
-            next_points = next_points.view(-1, 3)
+            points = points.view(points.size(0), 3, -1)
+            next_points = next_points.view(next_points.size(0), 3, -1)
             out = model(points)
             loss = criterion(out, next_points)
             loss.backward()
@@ -81,8 +98,9 @@ def evaluate(model, loader, criterion, epoch):
     total_mape = 0  # Добавляем переменную для суммы MAPE
     with torch.no_grad():
         for points, next_points in loader:
-            points = points.view(-1, 3)
-            next_points = next_points.view(-1, 3)
+            points, next_points = points.to(device), next_points.to(device)
+            points = points.view(points.size(0), 3, -1)
+            next_points = next_points.view(next_points.size(0), 3, -1)
             out = model(points)
             loss = criterion(out, next_points)
             total_loss += loss.item()
@@ -112,12 +130,12 @@ evaluate(model, test_loader, criterion, parameters['epochs'])
 
 # Проверка загрузки данных
 for points, next_points in train_loader:
-    report_clearml_3d("Point object", points[0])
-    report_clearml_3d("Target object", next_points[0])
-    prediction = predict(model, points[0])
-    report_clearml_3d("Predict object", prediction)
+    points, next_points = points.to(device), next_points.to(device)
+    report_clearml_3d("Point object", points[0].cpu())
+    report_clearml_3d("Target object", next_points[0].cpu())
+    prediction = predict(model, points[0].cpu())
+    report_clearml_3d("Predict object", prediction.cpu())
     break
-
 
 # Сохранение модели после обучения
 model_save_path = os.path.join('save_model', f'trained_model_ep{parameters["epochs"]}_bch{parameters["batch_size"]}_smape.pth')
