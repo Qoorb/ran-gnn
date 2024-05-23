@@ -1,11 +1,19 @@
-.venv/
-datasets/
 __pycache__/
-ModelNet10.zip
-ModelNet10/
 __MACOSX/
-save_0.pth
-save_1.pth
-save_2.pth
+.venv/
+venv
 
+datasets/
+merged_output_taylor/
+ModelNet10/
+tests/
+data/
+*.zip
+*.pth
+taylor/
+modeldgcnn.py
+info.md
+merged_output
 
+output_data/
+video/
