@@ -4,6 +4,7 @@ __MACOSX/
 venv
 
 datasets/
+merged_output_taylor/
 ModelNet10/
 tests/
 data/
@@ -13,3 +14,6 @@ taylor/
 modeldgcnn.py
 info.md
 merged_output
+
+output_data/
+video/

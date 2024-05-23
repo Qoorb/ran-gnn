@@ -6,7 +6,7 @@ def merge_csv_in_folders(folder_path, output_base_folder):
     for subfolder in subfolders:
         output_folder = os.path.join(output_base_folder, os.path.basename(subfolder))
         os.makedirs(output_folder, exist_ok=True)
-        csv_files = [f for f in os.listdir(subfolder) if f.endswith('.csv')]
+        csv_files = [f for f in os.listdir(subfolder) if (f.endswith('.csv') and 'node' in f)]
         csv_files.sort()  # Сортировка файлов для правильного объединения
         for i in range(len(csv_files) - 1):  # Итерация по всем файлам, кроме последнего
             file1 = os.path.join(subfolder, csv_files[i])
@@ -19,8 +19,8 @@ def merge_csv_in_folders(folder_path, output_base_folder):
             merged_df.to_csv(output_file, index=False)
 
 # Задаем путь к основной папке и путь к папке, куда будут сохранены объединенные файлы
-folder_path = 'data_csv'
-output_base_folder = 'merged_output'
+folder_path = 'taylor'
+output_base_folder = 'merged_output_taylor'
 
 # Вызываем функцию для объединения CSV файлов внутри папок и сохранения их в новых папках
 merge_csv_in_folders(folder_path, output_base_folder)

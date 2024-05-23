@@ -1,22 +1,22 @@
 import torch
-import torch.optim as optim
-import torch.nn as nn
+import os
 from torch.utils.data import DataLoader
-from torch_geometric.data import Data
-from classes import PointCloudDataset
-from functions import get_all_csv_files, report_clearml_3d
 from clearml import Task
+from classes import PointCloudDataset
+from functions import get_all_csv_files, report_clearml_3d, save_to_csv, save_model, predict
+from functions import calculate_mape, calculate_smape, calculate_logcosh_loss, calculate_smape_loss
+from pointnet import PointNet
 from model import DGCNN
 
 # Инициализация задачи ClearML
-task = Task.init(project_name='PointNetML', task_name="DGCNN Regression --Model")
+task = Task.init(project_name='PointNetML', task_name="DGCNN Regression --Model2")
 
 # Параметры
 parameters = {
-    'root_dir': 'merged_output',
-    'batch_size': 4,
-    'epochs': 100,
-    'learning_rate': 0.01,
+    'root_dir': 'merged_output_taylor',
+    'batch_size': 10,
+    'epochs': 40,
+    'learning_rate': 0.001,
     'k': 2,
 }
 task.connect(parameters)
@@ -30,57 +30,95 @@ dataset_test = PointCloudDataset(csv_files_test)
 train_loader = DataLoader(dataset_train, parameters['batch_size'], shuffle=True)
 test_loader = DataLoader(dataset_test, parameters['batch_size'], shuffle=False)
 
-# Проверка загрузки данных
-for points, next_points in train_loader:
-    print("Форма входных точек:", points.shape)
-    print("Входные точки:")
-    print(points[0])
-    report_clearml_3d("Now point object", points[0])
-    print("Форма целевых точек:", next_points.shape) 
-    print("Целевые точки:")
-    print(next_points[0])
-    report_clearml_3d("Next point object", next_points[0])
-    break
-
-# Инициализация модели
-model = DGCNN(in_channels=3, out_channels=3, k=parameters['k'])
-optimizer = optim.Adam(model.parameters(), lr=parameters['learning_rate'])
-loss_fn = nn.MSELoss()
+# Инициализируем модель, оптимизатор и функцию потерь
+model = PointNet(3,256,3)
+optimizer = torch.optim.Adam(model.parameters(), lr=parameters['learning_rate'])
+criterion = calculate_smape_loss
 
 # Обучение модели
-model.train()
-for epoch in range(parameters['epochs']):
-    epoch_loss = 0
-    for points, next_points in train_loader:
-        optimizer.zero_grad()
-        points = points.float()
-        next_points = next_points.float()
-        
-        # Подготовка данных для DGCNN
-        data = Data(x=points.view(-1, 3))  # Преобразование данных
-        data.batch = torch.arange(points.size(0)).repeat_interleave(points.size(1)).to(points.device)
-        
-        output = model(data)
-        loss = loss_fn(output.view_as(next_points), next_points)
-        loss.backward()
-        optimizer.step()
-        epoch_loss += loss.item()
-    
-    print(f'Epoch {epoch + 1}, Loss: {epoch_loss / len(train_loader)}')
+def train(model, loader, optimizer, criterion, epochs):
+    model.train()
+    for epoch in range(epochs):
+        total_loss = 0
+        total_smape = 0
+        total_mape = 0  # Добавляем переменную для суммы MAPE
+        for points, next_points in loader:
+            optimizer.zero_grad()
+            points = points.view(-1, 3)
+            next_points = next_points.view(-1, 3)
+            out = model(points)
+            loss = criterion(out, next_points)
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item()
+            total_smape += calculate_smape(out, next_points)
+            total_mape += calculate_mape(out, next_points)  # Вычисляем MAPE
+            
+            # Логируем метрики
+            task.current_task().get_logger().report_scalar(
+                "MSE Loss", "train", loss.item(), epoch)
+            task.current_task().get_logger().report_scalar(
+                "SMAPE", "train", calculate_smape(out, next_points), epoch)
+            task.current_task().get_logger().report_scalar(
+                "MAPE", "train", calculate_mape(out, next_points), epoch)
 
-# Тестирование модели
-model.eval()
-test_loss = 0
-with torch.no_grad():
-    for points, next_points in test_loader:
-        points = points.float()
-        next_points = next_points.float()
+        avg_loss = total_loss / len(loader)
+        avg_smape = total_smape / len(loader)
+        avg_mape = total_mape / len(loader) 
         
-        data = Data(x=points.view(-1, 3))  # Преобразование данных
-        data.batch = torch.arange(points.size(0)).repeat_interleave(points.size(1)).to(points.device)
+        # Логируем средние значения по эпохе
+        task.current_task().get_logger().report_scalar("MSE Loss (Epoch)", "train", avg_loss, epoch)
+        task.current_task().get_logger().report_scalar("SMAPE (Epoch)", "train", avg_smape, epoch)
+        task.current_task().get_logger().report_scalar("MAPE (Epoch)", "train", avg_mape, epoch)
         
-        output = model(data)
-        loss = loss_fn(output.view_as(next_points), next_points)
-        test_loss += loss.item()
+        print(f'Epoch {epoch+1}, MSE Loss: {avg_loss}, SMAPE: {avg_smape}, MAPE: {avg_mape}')
+
+# Оценка модели
+def evaluate(model, loader, criterion, epoch):
+    model.eval()
+    total_loss = 0
+    total_smape = 0
+    total_mape = 0  # Добавляем переменную для суммы MAPE
+    with torch.no_grad():
+        for points, next_points in loader:
+            points = points.view(-1, 3)
+            next_points = next_points.view(-1, 3)
+            out = model(points)
+            loss = criterion(out, next_points)
+            total_loss += loss.item()
+            total_smape += calculate_smape(out, next_points)
+            total_mape += calculate_mape(out, next_points)  # Вычисляем MAPE
+            
+            # Логируем метрики
+            task.current_task().get_logger().report_scalar("MSE Loss", "evaluate", loss.item(), epoch)
+            task.current_task().get_logger().report_scalar("SMAPE", "evaluate", calculate_smape(out, next_points), epoch)
+            task.current_task().get_logger().report_scalar("MAPE", "evaluate", calculate_mape(out, next_points), epoch)
+
+    avg_loss = total_loss / len(loader)
+    avg_smape = total_smape / len(loader)
+    avg_mape = total_mape / len(loader)  # Среднее значение MAPE
     
-    print(f'Test Loss: {test_loss / len(test_loader)}')
+    # Логируем средние значения
+    task.current_task().get_logger().report_scalar("MSE Loss", "evaluate", avg_loss, epoch)
+    task.current_task().get_logger().report_scalar("SMAPE", "evaluate", avg_smape, epoch)
+    task.current_task().get_logger().report_scalar("MAPE", "evaluate", avg_mape, epoch)
+    
+    print(f'Evaluation MSE Loss: {avg_loss}, SMAPE: {avg_smape}, MAPE: {avg_mape}')
+
+
+# Запуск обучения и оценки
+train(model, train_loader, optimizer, criterion, parameters['epochs'])
+evaluate(model, test_loader, criterion, parameters['epochs'])
+
+# Проверка загрузки данных
+for points, next_points in train_loader:
+    report_clearml_3d("Point object", points[0])
+    report_clearml_3d("Target object", next_points[0])
+    prediction = predict(model, points[0])
+    report_clearml_3d("Predict object", prediction)
+    break
+
+
+# Сохранение модели после обучения
+model_save_path = os.path.join('save_model', f'trained_model_ep{parameters["epochs"]}_bch{parameters["batch_size"]}_smape.pth')
+save_model(model, model_save_path)
