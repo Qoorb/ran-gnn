@@ -25,7 +25,7 @@ parameters = {
     'k': 30,
     'emb_dims': 512,
     'dropout': 0.2,
-    'num_points': 2000
+    'num_points': 500
 }
 task.connect(parameters)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -43,8 +43,6 @@ test_loader = DataLoader(dataset_test, parameters['batch_size'], shuffle=False)
 model = DGCNN(3,parameters['num_points'],parameters['k']).to(device)
 optimizer = torch.optim.Adam(model.parameters(), parameters['learning_rate'])
 criterion = torch.nn.MSELoss()
-
-
 
 def train(model, loader, optimizer, criterion, device, epoch):
     model.train()
