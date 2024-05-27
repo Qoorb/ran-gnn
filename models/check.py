@@ -20,12 +20,12 @@ task = Task.init(project_name='PointNetML', task_name="DGCNN --CompleteWithoutPo
 parameters = {
     'root_dir': 'merged_output_taylor',
     'batch_size': 2,
-    'epoch': 4,
+    'epoch': 2,
     'learning_rate': 0.01,
     'k': 30,
     'emb_dims': 512,
     'dropout': 0.2,
-    'num_points': 3000
+    'num_points': 2000
 }
 task.connect(parameters)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -51,11 +51,12 @@ def train(model, loader, optimizer, criterion, device, epoch):
     for epoch in range(epoch):
         total_loss = 0
         total_smape = 0
-        total_mape = 0 
+        total_mape = 0
         avg_loss = 0
-        avg_smape = 0 
+        avg_smape = 0
         avg_mape = 0
-        for batch_idx, data in enumerate(tqdm(loader, desc=f'Epoch {epoch + 1}, Loss: {total_loss}, SMAPE: {total_smape}')):
+        progress_bar = tqdm(loader, desc=f'Epoch {epoch + 1}')
+        for batch_idx, data in enumerate(progress_bar):
             data = data.to(device)
             optimizer.zero_grad()
             out = model(data.x, data.edge_index, data.batch)
@@ -66,57 +67,65 @@ def train(model, loader, optimizer, criterion, device, epoch):
             total_loss += loss.item()
             total_smape += calculate_smape(out, target)
             total_mape += calculate_mape(out, target)  # Вычисляем MAPE
-            
+
             # Логируем метрики для каждой итерации
             task.current_task().get_logger().report_scalar("MSE Loss", "train", loss.item(), epoch)
             task.current_task().get_logger().report_scalar("SMAPE", "train", calculate_smape(out, target), epoch)
             task.current_task().get_logger().report_scalar("MAPE", "train", calculate_mape(out, target), epoch)
 
+            # Обновляем описание `tqdm` с текущими значениями
+            progress_bar.set_description(f'Epoch {epoch + 1}, Loss: {total_loss/(batch_idx+1):.4f}, SMAPE: {total_smape/(batch_idx+1):.4f}')
+
         avg_loss = total_loss / len(loader)
         avg_smape = total_smape / len(loader)
-        avg_mape = total_mape / len(loader) 
-        
+        avg_mape = total_mape / len(loader)
+
         # Логируем средние значения по эпохе
         task.current_task().get_logger().report_scalar("MSE Loss (Epoch)", "train", avg_loss, epoch)
         task.current_task().get_logger().report_scalar("SMAPE (Epoch)", "train", avg_smape, epoch)
         task.current_task().get_logger().report_scalar("MAPE (Epoch)", "train", avg_mape, epoch)
-        
-        #print(f'Epoch {epoch + 1}, MSE Loss: {avg_loss}, SMAPE: {avg_smape}, MAPE: {avg_mape}')
+
+        print(f'Epoch {epoch + 1}, MSE Loss: {avg_loss:.4f}, SMAPE: {avg_smape:.4f}, MAPE: {avg_mape:.4f}')
 
 def evaluate(model, loader, criterion, device, epoch):
     model.eval()
     total_loss = 0
     total_smape = 0
-    total_mape = 0  
+    total_mape = 0
     avg_loss = 0
-    avg_smape = 0 
+    avg_smape = 0
     avg_mape = 0
     print("Evaluate")
     with torch.no_grad():
-        for batch_idx, data in enumerate(tqdm(loader, desc=f'Epoch {epoch + 1}, Loss: {avg_loss}, SMAPE: {avg_smape}')):
+        progress_bar = tqdm(loader, desc=f'Epoch {epoch + 1}')
+        for batch_idx, data in enumerate(progress_bar):
             data = data.to(device)
             out = model(data.x, data.edge_index, data.batch)
             target = data.y.view(data.y.size(0), -1, 3)
             loss = criterion(out, target)
             total_loss += loss.item()
             total_smape += calculate_smape(out, target)
-            total_mape += calculate_mape(out, target) 
-            
+            total_mape += calculate_mape(out, target)
+
             # Логируем метрики для каждой итерации
             task.current_task().get_logger().report_scalar("MSE Loss", "evaluate", loss.item(), epoch)
             task.current_task().get_logger().report_scalar("SMAPE", "evaluate", calculate_smape(out, target), epoch)
             task.current_task().get_logger().report_scalar("MAPE", "evaluate", calculate_mape(out, target), epoch)
 
+            # Обновляем описание `tqdm` с текущими значениями
+            progress_bar.set_description(f'Epoch {epoch + 1}, Loss: {total_loss/(batch_idx+1):.4f}, SMAPE: {total_smape/(batch_idx+1):.4f}')
+
         avg_loss = total_loss / len(loader)
         avg_smape = total_smape / len(loader)
-        avg_mape = total_mape / len(loader)  
-        
+        avg_mape = total_mape / len(loader)
+
         # Логируем средние значения
         task.current_task().get_logger().report_scalar("MSE Loss", "evaluate", avg_loss, epoch)
         task.current_task().get_logger().report_scalar("SMAPE", "evaluate", avg_smape, epoch)
         task.current_task().get_logger().report_scalar("MAPE", "evaluate", avg_mape, epoch)
-        
-        print(f'Evaluation MSE Loss: {avg_loss}, SMAPE: {avg_smape}, MAPE: {avg_mape}')
+
+        print(f'Evaluation MSE Loss: {avg_loss:.4f}, SMAPE: {avg_smape:.4f}, MAPE: {avg_mape:.4f}')
+
 
 # Запуск обучения и оценки
 train(model, loader, optimizer, criterion,device, parameters['epoch'])
