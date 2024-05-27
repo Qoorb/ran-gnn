@@ -8,52 +8,58 @@ import os
 from torch_geometric.data import Data, DataLoader
 from clearml import Task
 from classes import PointCloudDataset
-from functions import get_all_csv_files, report_clearml_3d, save_to_csv, save_model, predict
+from functions import get_all_csv_files, report_clearml_3d, save_to_csv, save_model
 from functions import calculate_mape, calculate_smape, calculate_logcosh_loss, calculate_smape_loss
 from pointnet import PointNet
 from pointnet import Net,DGCNN
+from tqdm import tqdm
 
 # Инициализация задачи ClearML
-task = Task.init(project_name='PointNetML', task_name="DGCNN Regression --Model3")
+task = Task.init(project_name='PointNetML', task_name="DGCNN --CompleteWithoutPoint_CPU")
 
 parameters = {
     'root_dir': 'merged_output_taylor',
-    'batch_size': 10,
-    'epoch': 2,
+    'batch_size': 2,
+    'epoch': 4,
     'learning_rate': 0.01,
-    'k': 2,
+    'k': 30,
     'emb_dims': 512,
     'dropout': 0.2,
-    'num_points': 20
+    'num_points': 3000
 }
 task.connect(parameters)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(device)
 
 csv_files_train, csv_files_test = get_all_csv_files(parameters['root_dir'])
-dataset_train = PointCloudDataset(csv_files_train,parameters['num_points'])
-dataset_test = PointCloudDataset(csv_files_test,parameters['num_points'])
+dataset_train = PointCloudDataset(csv_files_train,parameters['num_points'],parameters["k"])
+dataset_test = PointCloudDataset(csv_files_test,parameters['num_points'],parameters["k"])
 
 loader = DataLoader(dataset_train, parameters['batch_size'], shuffle=True)
 test_loader = DataLoader(dataset_test, parameters['batch_size'], shuffle=False)
 
+
 #model = Net(3, 64,parameters['num_points'], 3).to(device)
-model = DGCNN(3,parameters['num_points'],4).to(device)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+model = DGCNN(3,parameters['num_points'],parameters['k']).to(device)
+optimizer = torch.optim.Adam(model.parameters(), parameters['learning_rate'])
 criterion = torch.nn.MSELoss()
+
+
 
 def train(model, loader, optimizer, criterion, device, epoch):
     model.train()
     for epoch in range(epoch):
         total_loss = 0
         total_smape = 0
-        total_mape = 0  # Добавляем переменную для суммы MAPE
-        for batch_idx, data in enumerate(loader):
+        total_mape = 0 
+        avg_loss = 0
+        avg_smape = 0 
+        avg_mape = 0
+        for batch_idx, data in enumerate(tqdm(loader, desc=f'Epoch {epoch + 1}, Loss: {total_loss}, SMAPE: {total_smape}')):
             data = data.to(device)
             optimizer.zero_grad()
             out = model(data.x, data.edge_index, data.batch)
             target = data.y.view(data.y.size(0), -1, 3)
-            print(target.size(0),target.size(1),target.size(2))
             loss = criterion(out, target)
             loss.backward()
             optimizer.step()
@@ -75,15 +81,19 @@ def train(model, loader, optimizer, criterion, device, epoch):
         task.current_task().get_logger().report_scalar("SMAPE (Epoch)", "train", avg_smape, epoch)
         task.current_task().get_logger().report_scalar("MAPE (Epoch)", "train", avg_mape, epoch)
         
-        print(f'Epoch {epoch + 1}, MSE Loss: {avg_loss}, SMAPE: {avg_smape}, MAPE: {avg_mape}')
+        #print(f'Epoch {epoch + 1}, MSE Loss: {avg_loss}, SMAPE: {avg_smape}, MAPE: {avg_mape}')
 
 def evaluate(model, loader, criterion, device, epoch):
     model.eval()
     total_loss = 0
     total_smape = 0
     total_mape = 0  
+    avg_loss = 0
+    avg_smape = 0 
+    avg_mape = 0
+    print("Evaluate")
     with torch.no_grad():
-        for batch_idx, data in enumerate(loader):
+        for batch_idx, data in enumerate(tqdm(loader, desc=f'Epoch {epoch + 1}, Loss: {avg_loss}, SMAPE: {avg_smape}')):
             data = data.to(device)
             out = model(data.x, data.edge_index, data.batch)
             target = data.y.view(data.y.size(0), -1, 3)
@@ -111,3 +121,30 @@ def evaluate(model, loader, criterion, device, epoch):
 # Запуск обучения и оценки
 train(model, loader, optimizer, criterion,device, parameters['epoch'])
 evaluate(model, test_loader, criterion,device, parameters['epoch'])
+
+def predict(model, data, edge_index, batch):
+    model.eval()
+    with torch.no_grad():
+        output = model(data, edge_index, batch)
+    return output
+
+for batch_idx, data in enumerate(loader):
+    points, next_points = data.x, data.y
+    points, next_points = points.to(device), next_points.to(device)
+    edge_index, batch = data.edge_index.to(device), data.batch.to(device)  # Добавлено
+    print(f'Batch {batch_idx + 1}')
+    print('Points:', points)
+    print('Next Points:', next_points[0])
+    report_clearml_3d("Point object", points)
+    report_clearml_3d("Target object", next_points[0])
+    prediction = predict(model, points, edge_index, batch)  # Передаем edge_index и batch
+    print("asdasd",prediction[0])
+    report_clearml_3d("Predict object", prediction[0])
+    
+    # Прерываем после первого батча для примера
+    break
+
+
+# Сохранение модели после обучения
+model_save_path = os.path.join('save_model', f'DGCNN_ep{parameters["epoch"]}_bch{parameters["batch_size"]}_lr{parameters["learning_rate"]}_k{parameters["k"]}.pth')
+save_model(model, model_save_path)

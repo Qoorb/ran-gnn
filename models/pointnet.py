@@ -80,11 +80,11 @@ class DGCNN(torch.nn.Module):
         self.bn1 = torch.nn.BatchNorm1d(256)
         self.lin2 = torch.nn.Linear(256, 128)
         self.bn2 = torch.nn.BatchNorm1d(128)
-        self.lin3 = torch.nn.Linear(128, num_points) 
+        self.lin3 = torch.nn.Linear(128, num_points * 3)
+        self.num_points = num_points
+        self.output_dim = 3
 
     def forward(self, x, edge_index, batch):
-
-
         x1 = self.conv1(x, batch)
         x2 = self.conv2(x1, batch)
         x3 = self.conv3(x2, batch)
@@ -94,6 +94,7 @@ class DGCNN(torch.nn.Module):
 
         x = F.relu(self.bn1(self.lin1(x)))
         x = F.relu(self.bn2(self.lin2(x)))
+
         x = self.lin3(x)
-        print(x.size(0),x.size(1))
+        x = x.view(-1, self.num_points, self.output_dim)
         return x
