@@ -10,7 +10,7 @@ from classes import PointCloudDataset
 from torch.utils.data import DataLoader
 from pointnet import PointNet
 
-number_to_video = '3'
+number_to_video = '105'
 dataset_test_video = PointCloudDataset([f'merged_output_taylor\\{number_to_video}\\merged_1_2.csv'])
 test_loader_video = DataLoader(dataset_test_video, 1, shuffle=False)
 output_directory = r'output_data' 
