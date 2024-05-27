@@ -33,16 +33,16 @@ def merge_csv_in_folders(folder_path, output_base_folder):
             df1.columns = ['X', 'Y', 'Z']
             df1 = df1.applymap(lambda x: x.replace('.0', '0.0').replace('-.0', '-0.0'))
             df1 = df1.astype(float)
-            avg_df1 = average_every_three_rows(df1)
+            #avg_df1 = average_every_three_rows(df1)
 
             df2 = pd.read_csv(file2)
             df2 = df2[str(df2.columns[0])].str.split(';', expand=True)
             df2.columns = ['X1', 'Y1', 'Z1']
             df2 = df2.applymap(lambda x: x.replace('.0', '0.0').replace('-.0', '-0.0'))
             df2 = df2.astype(float)
-            avg_df2 = average_every_three_rows(df2)
+            #avg_df2 = average_every_three_rows(df2)
 
-            merged_df = pd.concat([avg_df1, avg_df2.reset_index(drop=True)], axis=1)
+            merged_df = pd.concat([df1, df2.reset_index(drop=True)], axis=1)
 
             print(merged_df.columns)
             output_file = os.path.join(output_folder, f"merged_{csv_files[i][5:6]}_{csv_files[i+1][5:6]}.csv")

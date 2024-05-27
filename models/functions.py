@@ -93,12 +93,10 @@ def save_model(model, filename):
     torch.save(model.state_dict(), filename)
     print(f"Model saved to {filename}")
 
-# Предсказание
-def predict(model, input_data):
+def predict(model, data, edge_index, batch):
     model.eval()
     with torch.no_grad():
-        # Передача данных в модель
-        output = model(input_data)
+        output = model(data, edge_index, batch)
     return output
 
 # Функция для расчета MAPE
