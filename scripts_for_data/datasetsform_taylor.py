@@ -4,7 +4,7 @@ import pandas as pd
 def merge_csv_in_folders(folder_path, output_base_folder):
     def average_every_three_rows(df):
         # Вычисляем среднее значение каждых трех строк
-        avg_df = df.groupby(df.index // 3).mean().reset_index(drop=True)
+        avg_df = df.groupby(df.index // 4).mean().reset_index(drop=True)
         return avg_df
 
     subfolders = [f.path for f in os.scandir(folder_path) if f.is_dir()]

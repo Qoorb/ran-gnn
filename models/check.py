@@ -25,7 +25,7 @@ parameters = {
     'k': 30,
     'emb_dims': 512,
     'dropout': 0.2,
-    'num_points': 500
+    'num_points': 50
 }
 task.connect(parameters)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
